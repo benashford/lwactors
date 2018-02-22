@@ -1,0 +1,8 @@
+[package]
+name = "lwactors"
+version = "0.1.0"
+authors = ["Ben Ashford <benashford@users.noreply.github.com>"]
+
+[dependencies]
+futures = "0.1.18"
+futures-cpupool = "0.1.8"
