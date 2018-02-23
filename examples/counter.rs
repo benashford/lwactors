@@ -4,9 +4,7 @@ extern crate lwactors;
 
 use std::thread;
 
-use futures::{future, Future, Sink};
-use futures::sink::Send;
-use futures::sync::mpsc;
+use futures::{future, Future};
 
 use futures_cpupool::CpuPool;
 
@@ -52,11 +50,11 @@ impl Counter {
     }
 
     fn add(&self, n: i64) -> CounterFuture {
-        Box::new(self.queue.invoke(CounterAction::Add(n)))
+        self.queue.invoke(CounterAction::Add(n))
     }
 
     fn subtract(&self, n: i64) -> CounterFuture {
-        Box::new(self.queue.invoke(CounterAction::Subtract(n)))
+        self.queue.invoke(CounterAction::Subtract(n))
     }
 }
 
