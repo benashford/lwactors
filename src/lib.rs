@@ -43,9 +43,9 @@ impl<A, R, E> Clone for ActorSender<A, R, E> {
 
 impl<A, R, E> ActorSender<A, R, E>
 where
-    A: 'static,
-    R: 'static,
-    E: From<ActorError> + 'static,
+    A: Send + 'static,
+    R: Send + 'static,
+    E: Send + From<ActorError> + 'static,
 {
     pub fn invoke(&self, action: A) -> ActFuture<R, E> {
         let (tx, rx) = oneshot::channel();
@@ -93,7 +93,7 @@ pub trait Action<S, R, E> {
     fn act(self, s: &mut S) -> Result<R, E>;
 }
 
-pub type ActFuture<R, E> = Box<Future<Item = R, Error = E>>;
+pub type ActFuture<R, E> = Box<Future<Item = R, Error = E> + Send>;
 
 #[derive(Debug)]
 pub enum ActorError {
