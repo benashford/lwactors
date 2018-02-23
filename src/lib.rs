@@ -5,17 +5,19 @@ use std::error::Error;
 use std::fmt;
 
 use futures::{Async, Future, Poll, Sink, Stream};
+use futures::future;
 use futures::future::Executor;
 use futures::sync::{mpsc, oneshot};
 use futures_cpupool::CpuPool;
 
 const DEFAULT_SIZE: usize = 8;
 
-pub fn actor<A, S, R>(cpu_pool: &CpuPool, initial_state: S) -> ActorSender<A, R>
+pub fn actor<A, S, R, E>(cpu_pool: &CpuPool, initial_state: S) -> ActorSender<A, R, E>
 where
-    A: Action<S, R> + Send + 'static,
+    A: Action<S, R, E> + Send + 'static,
     S: Send + 'static,
     R: Send + 'static,
+    E: Send + 'static,
 {
     let (tx, rx) = mpsc::channel(DEFAULT_SIZE);
     let actor = Actor {
@@ -28,45 +30,46 @@ where
     ActorSender(tx)
 }
 
-type ActorSenderInner<A, R> = mpsc::Sender<(A, oneshot::Sender<R>)>;
+type ActorSenderInner<A, R, E> = mpsc::Sender<(A, oneshot::Sender<Result<R, E>>)>;
 
 #[derive(Debug)]
-pub struct ActorSender<A, R>(ActorSenderInner<A, R>);
+pub struct ActorSender<A, R, E>(ActorSenderInner<A, R, E>);
 
-impl<A, R> Clone for ActorSender<A, R> {
+impl<A, R, E> Clone for ActorSender<A, R, E> {
     fn clone(&self) -> Self {
         ActorSender(self.0.clone())
     }
 }
 
-impl<A, R> ActorSender<A, R>
+impl<A, R, E> ActorSender<A, R, E>
 where
     A: 'static,
     R: 'static,
+    E: From<ActorError> + 'static,
 {
-    pub fn invoke<E>(&self, action: A) -> ActFuture<R, E>
-    where
-        E: From<ActorError>,
-    {
+    pub fn invoke(&self, action: A) -> ActFuture<R, E> {
         let (tx, rx) = oneshot::channel();
         let send_f = self.0.clone().send((action, tx));
-        let act_f = send_f.map_err(|e| e.into()).join(rx.map_err(|e| e.into()));
-        Box::new(
-            act_f
-                .map(|(_, result)| result)
-                .map_err(|e: ActorError| e.into()),
-        )
+        let recv_f = rx.then(|r| {
+            future::result(match r {
+                Ok(Ok(r)) => Ok(r),
+                Ok(Err(e)) => Err(e),
+                Err(e) => Err(ActorError::from(e).into()),
+            })
+        });
+        let act_f = send_f.map_err(|e| ActorError::from(e).into()).join(recv_f);
+        Box::new(act_f.map(|(_, result)| result))
     }
 }
 
-pub struct Actor<A, S, R> {
-    receiver: mpsc::Receiver<(A, oneshot::Sender<R>)>,
+pub struct Actor<A, S, R, E> {
+    receiver: mpsc::Receiver<(A, oneshot::Sender<Result<R, E>>)>,
     state: S,
 }
 
-impl<A, S, R> Future for Actor<A, S, R>
+impl<A, S, R, E> Future for Actor<A, S, R, E>
 where
-    A: Action<S, R>,
+    A: Action<S, R, E>,
 {
     type Item = ();
     type Error = ();
@@ -86,8 +89,8 @@ where
     }
 }
 
-pub trait Action<S, R> {
-    fn act(self, s: &mut S) -> R;
+pub trait Action<S, R, E> {
+    fn act(self, s: &mut S) -> Result<R, E>;
 }
 
 pub type ActFuture<R, E> = Box<Future<Item = R, Error = E>>;

@@ -39,7 +39,7 @@ fn main() {
 
 #[derive(Clone)]
 struct Counter {
-    queue: ActorSender<CounterAction, i64>,
+    queue: ActorSender<CounterAction, i64, CounterError>,
 }
 
 type CounterFuture = Box<Future<Item = i64, Error = CounterError>>;
@@ -66,14 +66,14 @@ enum CounterAction {
     Subtract(i64),
 }
 
-impl Action<i64, i64> for CounterAction {
-    fn act(self, state: &mut i64) -> i64 {
+impl Action<i64, i64, CounterError> for CounterAction {
+    fn act(self, state: &mut i64) -> Result<i64, CounterError> {
         println!("Acting {:?} on {}", self, state);
         match self {
             CounterAction::Add(i) => *state += i,
             CounterAction::Subtract(i) => *state -= i,
         }
-        return *state;
+        return Ok(*state);
     }
 }
 
