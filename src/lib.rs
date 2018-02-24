@@ -1,5 +1,4 @@
 extern crate futures;
-extern crate futures_cpupool;
 
 use std::error::Error;
 use std::fmt;
@@ -8,26 +7,26 @@ use futures::{Async, Future, Poll, Sink, Stream};
 use futures::future;
 use futures::future::Executor;
 use futures::sync::{mpsc, oneshot};
-use futures_cpupool::CpuPool;
 
 const DEFAULT_SIZE: usize = 8;
 
-/// Construct a new actor, requires a `CpuPool` and an initial state.  Returns a reference that can be cheaply
+/// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
-pub fn actor<A, S, R, E>(cpu_pool: &CpuPool, initial_state: S) -> ActorSender<A, R, E>
+pub fn actor<EX, A, S, R, E>(executor: &EX, initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<S, R, E> + Send + 'static,
     S: Send + 'static,
     R: Send + 'static,
     E: Send + 'static,
+    EX: Executor<Box<Future<Item = (), Error = ()> + Send>> + 'static,
 {
     let (tx, rx) = mpsc::channel(DEFAULT_SIZE);
-    let actor = Actor {
+    let actor = Box::new(Actor {
         receiver: rx,
         state: initial_state,
-    };
-    cpu_pool
+    });
+    executor
         .execute(actor)
         .expect("Cannot schedule actor on executor");
     ActorSender(tx)

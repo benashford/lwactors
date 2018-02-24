@@ -42,7 +42,7 @@ fn new(cpu_pool: &CpuPool) -> Counter {
 }
 ```
 
-it requires a reference to a `CpuPool` and an initial state, in this case `0`.
+it requires a reference to a `CpuPool` (or another `Executor`) and an initial state, in this case `0`.
 
 ### Action - the set of possible messages
 
