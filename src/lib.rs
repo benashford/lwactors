@@ -12,6 +12,9 @@ use futures_cpupool::CpuPool;
 
 const DEFAULT_SIZE: usize = 8;
 
+/// Construct a new actor, requires a `CpuPool` and an initial state.  Returns a reference that can be cheaply
+/// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
+/// the required custom logic.
 pub fn actor<A, S, R, E>(cpu_pool: &CpuPool, initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<S, R, E> + Send + 'static,
@@ -47,6 +50,8 @@ where
     R: Send + 'static,
     E: Send + From<ActorError> + 'static,
 {
+    /// Invokes a specific action on the actor.  Returns a future that completes when the actor has
+    /// performed the action
     pub fn invoke(&self, action: A) -> ActFuture<R, E> {
         let (tx, rx) = oneshot::channel();
         let send_f = self.0.clone().send((action, tx));
@@ -62,7 +67,7 @@ where
     }
 }
 
-pub struct Actor<A, S, R, E> {
+struct Actor<A, S, R, E> {
     receiver: mpsc::Receiver<(A, oneshot::Sender<Result<R, E>>)>,
     state: S,
 }
