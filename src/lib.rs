@@ -3,12 +3,10 @@ extern crate futures;
 use std::error::Error;
 use std::fmt;
 
-use futures::{Async, Future, Poll, Sink, Stream};
+use futures::{Async, Future, Poll, Stream};
 use futures::future;
 use futures::future::Executor;
 use futures::sync::{mpsc, oneshot};
-
-const DEFAULT_SIZE: usize = 8;
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
@@ -21,7 +19,7 @@ where
     E: Send + 'static,
     EX: Executor<Box<Future<Item = (), Error = ()> + Send>> + 'static,
 {
-    let (tx, rx) = mpsc::channel(DEFAULT_SIZE);
+    let (tx, rx) = mpsc::unbounded();
     let actor = Box::new(Actor {
         receiver: rx,
         state: initial_state,
@@ -32,7 +30,7 @@ where
     ActorSender(tx)
 }
 
-type ActorSenderInner<A, R, E> = mpsc::Sender<(A, oneshot::Sender<Result<R, E>>)>;
+type ActorSenderInner<A, R, E> = mpsc::UnboundedSender<(A, oneshot::Sender<Result<R, E>>)>;
 
 #[derive(Debug)]
 pub struct ActorSender<A, R, E>(ActorSenderInner<A, R, E>);
@@ -53,7 +51,9 @@ where
     /// performed the action
     pub fn invoke(&self, action: A) -> ActFuture<R, E> {
         let (tx, rx) = oneshot::channel();
-        let send_f = self.0.clone().send((action, tx));
+        if let Err(e) = self.0.unbounded_send((action, tx)) {
+            return Box::new(future::err(ActorError::from(e).into()));
+        }
         let recv_f = rx.then(|r| {
             future::result(match r {
                 Ok(Ok(r)) => Ok(r),
@@ -61,13 +61,12 @@ where
                 Err(e) => Err(ActorError::from(e).into()),
             })
         });
-        let act_f = send_f.map_err(|e| ActorError::from(e).into()).join(recv_f);
-        Box::new(act_f.map(|(_, result)| result))
+        Box::new(recv_f)
     }
 }
 
 struct Actor<A, S, R, E> {
-    receiver: mpsc::Receiver<(A, oneshot::Sender<Result<R, E>>)>,
+    receiver: mpsc::UnboundedReceiver<(A, oneshot::Sender<Result<R, E>>)>,
     state: S,
 }
 
