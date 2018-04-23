@@ -8,7 +8,15 @@ description = "Lightweight actors for Rust using futures-rs"
 repository = "https://github.com/benashford/lwactors"
 
 [dependencies]
-futures = "0.1.18"
+futures = { version = "0.1.18", optional = true }
+futures-core = { version = "0.2.1", optional = true }
+futures-channel = { version = "0.2.1", optional = true }
+fut02 = { path = "./fut02", optional = true }
 
 [dev-dependencies]
 futures-cpupool = "0.1.8"
+
+[features]
+default = ["futures-01"]
+futures-01 = ["futures"]
+futures-02 = ["fut02", "futures-core", "futures-channel"]

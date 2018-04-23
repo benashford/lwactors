@@ -1,12 +1,25 @@
+#[cfg(feature = "futures-01")]
 extern crate futures;
+
+#[cfg(feature = "futures-02")]
+extern crate futures_channel;
+#[cfg(feature = "futures-02")]
+extern crate futures_core as futures;
 
 use std::error::Error;
 use std::fmt;
 
-use futures::{Async, Future, Poll, Stream};
+#[cfg(feature = "futures-02")]
+use futures::executor::Executor;
 use futures::future;
+#[cfg(feature = "futures-01")]
 use futures::future::Executor;
+#[cfg(feature = "futures-01")]
 use futures::sync::{mpsc, oneshot};
+use futures::{Async, Future, Poll, Stream};
+
+#[cfg(feature = "futures-02")]
+use futures_channel::{mpsc, oneshot};
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement

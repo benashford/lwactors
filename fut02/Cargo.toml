@@ -1,0 +1,7 @@
+[package]
+name = "fut02"
+version = "0.1.0"
+authors = ["Ben Ashford <benashford@users.noreply.github.com>"]
+
+[dependencies]
+futures = "0.2.1"
