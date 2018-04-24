@@ -16,6 +16,8 @@ use futures::future;
 use futures::future::Executor;
 #[cfg(feature = "futures-01")]
 use futures::sync::{mpsc, oneshot};
+#[cfg(feature = "futures-02")]
+use futures::task::Context;
 use futures::{Async, Future, Poll, Stream};
 
 #[cfg(feature = "futures-02")]
@@ -24,6 +26,7 @@ use futures_channel::{mpsc, oneshot};
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
+#[cfg(features = "futures-01")]
 pub fn actor<EX, A, S, R, E>(executor: &EX, initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<S, R, E> + Send + 'static,
@@ -31,6 +34,26 @@ where
     R: Send + 'static,
     E: Send + 'static,
     EX: Executor<Box<Future<Item = (), Error = ()> + Send>> + 'static,
+{
+    let (tx, rx) = mpsc::unbounded();
+    let actor = Box::new(Actor {
+        receiver: rx,
+        state: initial_state,
+    });
+    executor
+        .execute(actor)
+        .expect("Cannot schedule actor on executor");
+    ActorSender(tx)
+}
+
+#[cfg(features = "futures-02")]
+pub fn actor<EX, A, S, R, E>(executor: &EX, initial_state: S) -> ActorSender<A, R, E>
+where
+    A: Action<S, R, E> + Send + 'static,
+    S: Send + 'static,
+    R: Send + 'static,
+    E: Send + 'static,
+    EX: Executor + 'static,
 {
     let (tx, rx) = mpsc::unbounded();
     let actor = Box::new(Actor {
@@ -90,6 +113,7 @@ where
     type Item = ();
     type Error = ();
 
+    #[cfg(feature = "futures-01")]
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
             match self.receiver.poll() {
@@ -99,6 +123,21 @@ where
                 }
                 Ok(Async::Ready(None)) => return Ok(Async::Ready(())),
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err(()) => return Err(()),
+            }
+        }
+    }
+
+    #[cfg(feature = "futures-02")]
+    fn poll(&mut self, cx: &mut Context) -> Poll<Self::Item, Self::Error> {
+        loop {
+            match self.receiver.poll_next(cx) {
+                Ok(Async::Ready(Some((a, tx)))) => {
+                    // Not checking the result, as nothing may be waiting
+                    let _ = tx.send(a.act(&mut self.state));
+                }
+                Ok(Async::Ready(None)) => return Ok(Async::Ready(())),
+                Ok(Async::Pending) => return Ok(Async::Pending),
                 Err(()) => return Err(()),
             }
         }
@@ -134,8 +173,16 @@ impl fmt::Display for ActorError {
     }
 }
 
+#[cfg(feature = "futures-01")]
 impl<T> From<mpsc::SendError<T>> for ActorError {
     fn from(_from: mpsc::SendError<T>) -> Self {
+        ActorError::InvokeError
+    }
+}
+
+#[cfg(feature = "futures-02")]
+impl<A> From<mpsc::TrySendError<A>> for ActorError {
+    fn from(_from: mpsc::TrySendError<A>) -> Self {
         ActorError::InvokeError
     }
 }
