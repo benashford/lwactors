@@ -5,23 +5,23 @@ extern crate futures;
 extern crate futures_channel;
 #[cfg(feature = "futures-02")]
 extern crate futures_core as futures;
+#[cfg(feature = "futures-02")]
+extern crate futures_util;
 
 use std::error::Error;
 use std::fmt;
 
+use futures::{future, Async, Future, Poll, Stream};
 #[cfg(feature = "futures-02")]
-use futures::executor::Executor;
-use futures::future;
+use futures::{Never, executor::Executor, task::Context};
 #[cfg(feature = "futures-01")]
-use futures::future::Executor;
-#[cfg(feature = "futures-01")]
-use futures::sync::{mpsc, oneshot};
-#[cfg(feature = "futures-02")]
-use futures::task::Context;
-use futures::{Async, Future, Poll, Stream};
+use futures::{future::Executor, sync::{mpsc, oneshot}};
 
 #[cfg(feature = "futures-02")]
 use futures_channel::{mpsc, oneshot};
+
+#[cfg(feature = "futures-02")]
+use futures_util::future::FutureExt;
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
@@ -138,7 +138,7 @@ where
                 }
                 Ok(Async::Ready(None)) => return Ok(Async::Ready(())),
                 Ok(Async::Pending) => return Ok(Async::Pending),
-                Err(()) => return Err(()),
+                Err(Never) => return Err(()),
             }
         }
     }
