@@ -64,14 +64,18 @@ enum CounterAction {
     Subtract(i64),
 }
 
-impl Action<i64, i64, CounterError> for CounterAction {
-    fn act(self, state: &mut i64) -> Result<i64, CounterError> {
+impl Action for CounterAction {
+    type State = i64;
+    type Result = i64;
+    type Error = CounterError;
+
+    fn act(self, state: &mut Self::State) -> Result<Self::Result, Self::Error> {
         println!("Acting {:?} on {}", self, state);
         match self {
             CounterAction::Add(i) => *state += i,
             CounterAction::Subtract(i) => *state -= i,
         }
-        return Ok(*state);
+        Ok(*state)
     }
 }
 

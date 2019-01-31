@@ -3,17 +3,18 @@ extern crate futures;
 use std::error::Error;
 use std::fmt;
 
-use futures::{Async, Future, Poll, Stream};
-use futures::future;
-use futures::future::Executor;
-use futures::sync::{mpsc, oneshot};
+use futures::{
+    future::{self, Executor},
+    sync::{mpsc, oneshot},
+    Async, Future, Poll, Stream,
+};
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
 pub fn actor<EX, A, S, R, E>(executor: &EX, initial_state: S) -> ActorSender<A, R, E>
 where
-    A: Action<S, R, E> + Send + 'static,
+    A: Action<State = S, Result = R, Error = E> + Send + 'static,
     S: Send + 'static,
     R: Send + 'static,
     E: Send + 'static,
@@ -72,7 +73,7 @@ struct Actor<A, S, R, E> {
 
 impl<A, S, R, E> Future for Actor<A, S, R, E>
 where
-    A: Action<S, R, E>,
+    A: Action<State = S, Result = R, Error = E>,
 {
     type Item = ();
     type Error = ();
@@ -92,8 +93,12 @@ where
     }
 }
 
-pub trait Action<S, R, E> {
-    fn act(self, s: &mut S) -> Result<R, E>;
+pub trait Action {
+    type State;
+    type Result;
+    type Error;
+
+    fn act(self, s: &mut Self::State) -> Result<Self::Result, Self::Error>;
 }
 
 pub type ActFuture<R, E> = Box<Future<Item = R, Error = E> + Send>;
@@ -109,8 +114,8 @@ pub enum ActorError {
 impl Error for ActorError {
     fn description(&self) -> &str {
         match self {
-            &ActorError::InvokeError => "Cannot send message to actor",
-            &ActorError::WaitError => "Cannot wait for an answer",
+            ActorError::InvokeError => "Cannot send message to actor",
+            ActorError::WaitError => "Cannot wait for an answer",
         }
     }
 }
