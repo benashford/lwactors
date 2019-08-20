@@ -1,7 +1,6 @@
 extern crate futures;
 
-use std::error::Error;
-use std::fmt;
+use std::{error::Error, fmt};
 
 use futures::{
     future::{self, Executor},
@@ -18,7 +17,7 @@ where
     S: Send + 'static,
     R: Send + 'static,
     E: Send + 'static,
-    EX: Executor<Box<Future<Item = (), Error = ()> + Send>> + 'static,
+    EX: Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + 'static,
 {
     let (tx, rx) = mpsc::unbounded();
     let actor = Box::new(Actor {
@@ -101,7 +100,7 @@ pub trait Action {
     fn act(self, s: &mut Self::State) -> Result<Self::Result, Self::Error>;
 }
 
-pub type ActFuture<R, E> = Box<Future<Item = R, Error = E> + Send>;
+pub type ActFuture<R, E> = Box<dyn Future<Item = R, Error = E> + Send>;
 
 #[derive(Debug)]
 pub enum ActorError {

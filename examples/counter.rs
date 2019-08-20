@@ -40,7 +40,7 @@ struct Counter {
     queue: ActorSender<CounterAction, i64, CounterError>,
 }
 
-type CounterFuture = Box<Future<Item = i64, Error = CounterError>>;
+type CounterFuture = Box<dyn Future<Item = i64, Error = CounterError>>;
 
 impl Counter {
     fn new(cpu_pool: &CpuPool) -> Counter {
