@@ -9,7 +9,8 @@ repository = "https://github.com/benashford/lwactors"
 edition = "2018"
 
 [dependencies]
-futures-preview = { version = "=0.3.0-alpha.18", features = ["async-await", "nightly"] }
+futures-channel-preview = { version = "=0.3.0-alpha.18"}
+futures-util-preview = { version = "=0.3.0-alpha.18"}
 
 [dev-dependencies]
-futures-cpupool = "0.1"
+futures-preview = { version = "=0.3.0-alpha.18" }

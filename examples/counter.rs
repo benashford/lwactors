@@ -1,58 +1,61 @@
+#![feature(async_await)]
+
 use std::thread;
 
-use futures::{future, Future};
+use futures::{
+    executor::{block_on, ThreadPool},
+    future,
+};
 
-use futures_cpupool::CpuPool;
+use lwactors::{actor, Action, ActorError, ActorSender};
 
-// use lwactors::{actor, Action, ActorError, ActorSender};
+fn main() {
+    let cpu_pool = ThreadPool::new().expect("Can't create ThreadPool");
+    let counter = Counter::new(cpu_pool.clone());
+    let counter1 = counter.clone();
 
-// fn main() {
-//     let cpu_pool = CpuPool::new_num_cpus();
-//     let counter = Counter::new(&cpu_pool);
-//     let counter1 = counter.clone();
+    let a = thread::spawn(move || {
+        let futs: Vec<_> = (0..100).map(|i| counter1.add(i)).collect();
+        let results = block_on(future::join_all(futs));
+        println!("ADD RESULTS: {:?}", results);
+    });
 
-//     let a = thread::spawn(move || {
-//         let futs: Vec<_> = (0..100).map(|i| counter1.add(i)).collect();
-//         let results = future::join_all(futs).wait().expect("Futures failed 1");
-//         println!("ADD RESULTS: {:?}", results);
-//     });
+    let counter2 = counter.clone();
 
-//     let counter2 = counter.clone();
+    let b = thread::spawn(move || {
+        let futs: Vec<_> = (0..100).map(|i| counter2.subtract(i)).collect();
+        let results = block_on(future::join_all(futs));
+        println!("SUB RESULTS: {:?}", results);
+    });
 
-//     let b = thread::spawn(move || {
-//         let futs: Vec<_> = (0..100).map(|i| counter2.subtract(i)).collect();
-//         let results = future::join_all(futs).wait().expect("Futures failed 2");
-//         println!("SUB RESULTS: {:?}", results);
-//     });
+    a.join().expect("Thread one failed");
+    b.join().expect("Thread two failed");
 
-//     a.join().expect("Thread one failed");
-//     b.join().expect("Thread two failed");
+    println!("Finished: {:?}", cpu_pool);
+}
 
-//     println!("Finished: {:?}", cpu_pool);
-// }
+#[derive(Clone)]
+struct Counter {
+    queue: ActorSender<CounterAction, i64, CounterError>,
+}
 
-// #[derive(Clone)]
-// struct Counter {
-//     queue: ActorSender<CounterAction, i64, CounterError>,
-// }
+type CounterResult = Result<i64, CounterError>;
 
-// type CounterFuture = Box<dyn Future<Item = i64, Error = CounterError>>;
+impl Counter {
+    fn new(thread_pool: ThreadPool) -> Counter {
+        Counter {
+            queue: actor(thread_pool, 0),
+        }
+    }
 
-// impl Counter {
-//     fn new(cpu_pool: &CpuPool) -> Counter {
-//         Counter {
-//             queue: actor(cpu_pool, 0),
-//         }
-//     }
+    async fn add(&self, n: i64) -> CounterResult {
+        self.queue.invoke(CounterAction::Add(n)).await
+    }
 
-//     fn add(&self, n: i64) -> CounterFuture {
-//         self.queue.invoke(CounterAction::Add(n))
-//     }
-
-//     fn subtract(&self, n: i64) -> CounterFuture {
-//         self.queue.invoke(CounterAction::Subtract(n))
-//     }
-// }
+    async fn subtract(&self, n: i64) -> CounterResult {
+        self.queue.invoke(CounterAction::Subtract(n)).await
+    }
+}
 
 #[derive(Debug)]
 enum CounterAction {
@@ -60,26 +63,26 @@ enum CounterAction {
     Subtract(i64),
 }
 
-// impl Action for CounterAction {
-//     type State = i64;
-//     type Result = i64;
-//     type Error = CounterError;
+impl Action for CounterAction {
+    type State = i64;
+    type Result = i64;
+    type Error = CounterError;
 
-//     fn act(self, state: &mut Self::State) -> Result<Self::Result, Self::Error> {
-//         println!("Acting {:?} on {}", self, state);
-//         match self {
-//             CounterAction::Add(i) => *state += i,
-//             CounterAction::Subtract(i) => *state -= i,
-//         }
-//         Ok(*state)
-//     }
-// }
+    fn act(self, state: &mut Self::State) -> Result<Self::Result, Self::Error> {
+        println!("Acting {:?} on {}", self, state);
+        match self {
+            CounterAction::Add(i) => *state += i,
+            CounterAction::Subtract(i) => *state -= i,
+        }
+        Ok(*state)
+    }
+}
 
 #[derive(Debug)]
 struct CounterError;
 
-// impl From<ActorError> for CounterError {
-//     fn from(_: ActorError) -> Self {
-//         CounterError
-//     }
-// }
+impl From<ActorError> for CounterError {
+    fn from(_: ActorError) -> Self {
+        CounterError
+    }
+}
