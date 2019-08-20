@@ -1,7 +1,3 @@
-extern crate futures;
-extern crate futures_cpupool;
-extern crate lwactors;
-
 use std::thread;
 
 use futures::{future, Future};
