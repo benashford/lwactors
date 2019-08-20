@@ -6,6 +6,7 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 description = "Lightweight actors for Rust using futures-rs"
 repository = "https://github.com/benashford/lwactors"
+edition = "2018"
 
 [dependencies]
 futures = "0.1"

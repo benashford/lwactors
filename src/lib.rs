@@ -1,5 +1,3 @@
-extern crate futures;
-
 use std::{error::Error, fmt};
 
 use futures::{
