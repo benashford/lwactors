@@ -5,7 +5,6 @@
 [![](https://img.shields.io/crates/d/lwactors.svg)](https://crates.io/crates/lwactors)
 [![](https://img.shields.io/crates/dv/lwactors.svg)](https://crates.io/crates/lwactors)
 [![](https://docs.rs/lwactors/badge.svg)](https://docs.rs/lwactors/)
-[![Dependency Status](https://dependencyci.com/github/benashford/lwactors/badge)](https://dependencyci.com/github/benashford/lwactors)
 
 Lightweight actors for Rust using `futures-rs`.
 
