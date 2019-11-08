@@ -1,5 +1,3 @@
-#![feature(async_await)]
-
 use std::{error::Error, fmt};
 
 use futures_channel::{mpsc, oneshot};
@@ -8,7 +6,7 @@ use futures_util::{stream::StreamExt, task::SpawnExt};
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
-pub fn actor<A, S, R, E>(mut executor: impl SpawnExt, initial_state: S) -> ActorSender<A, R, E>
+pub fn actor<A, S, R, E>(executor: impl SpawnExt, initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<State = S, Result = R, Error = E> + Send + 'static,
     S: Send + 'static,
