@@ -1,19 +1,20 @@
 use std::thread;
 
-use futures::{future, Future};
-
-use futures_cpupool::CpuPool;
+use futures::{
+    executor::{block_on, ThreadPool},
+    future,
+};
 
 use lwactors::{actor, Action, ActorError, ActorSender};
 
 fn main() {
-    let cpu_pool = CpuPool::new_num_cpus();
-    let counter = Counter::new(&cpu_pool);
+    let cpu_pool = ThreadPool::new().expect("Can't create ThreadPool");
+    let counter = Counter::new(cpu_pool.clone());
     let counter1 = counter.clone();
 
     let a = thread::spawn(move || {
         let futs: Vec<_> = (0..100).map(|i| counter1.add(i)).collect();
-        let results = future::join_all(futs).wait().expect("Futures failed 1");
+        let results = block_on(future::join_all(futs));
         println!("ADD RESULTS: {:?}", results);
     });
 
@@ -21,7 +22,7 @@ fn main() {
 
     let b = thread::spawn(move || {
         let futs: Vec<_> = (0..100).map(|i| counter2.subtract(i)).collect();
-        let results = future::join_all(futs).wait().expect("Futures failed 2");
+        let results = block_on(future::join_all(futs));
         println!("SUB RESULTS: {:?}", results);
     });
 
@@ -36,21 +37,21 @@ struct Counter {
     queue: ActorSender<CounterAction, i64, CounterError>,
 }
 
-type CounterFuture = Box<dyn Future<Item = i64, Error = CounterError>>;
+type CounterResult = Result<i64, CounterError>;
 
 impl Counter {
-    fn new(cpu_pool: &CpuPool) -> Counter {
+    fn new(thread_pool: ThreadPool) -> Counter {
         Counter {
-            queue: actor(cpu_pool, 0),
+            queue: actor(thread_pool, 0),
         }
     }
 
-    fn add(&self, n: i64) -> CounterFuture {
-        self.queue.invoke(CounterAction::Add(n))
+    async fn add(&self, n: i64) -> CounterResult {
+        self.queue.invoke(CounterAction::Add(n)).await
     }
 
-    fn subtract(&self, n: i64) -> CounterFuture {
-        self.queue.invoke(CounterAction::Subtract(n))
+    async fn subtract(&self, n: i64) -> CounterResult {
+        self.queue.invoke(CounterAction::Subtract(n)).await
     }
 }
 

@@ -5,7 +5,6 @@
 [![](https://img.shields.io/crates/d/lwactors.svg)](https://crates.io/crates/lwactors)
 [![](https://img.shields.io/crates/dv/lwactors.svg)](https://crates.io/crates/lwactors)
 [![](https://docs.rs/lwactors/badge.svg)](https://docs.rs/lwactors/)
-[![Dependency Status](https://dependencyci.com/github/benashford/lwactors/badge)](https://dependencyci.com/github/benashford/lwactors)
 
 Lightweight actors for Rust using `futures-rs`.
 
@@ -15,9 +14,13 @@ The TL;DR is that you probably want to use [Actix](https://github.com/actix/acti
 
 This library allows standalone "actors" to exist in Applications using Futures.
 
-An actor is created with an initial state.  From there the state can only be queried or modified by passing messages using the `invoke` function, receiving a future which will contain a result once the message has been processed.  The messages are processed asynchronously.
+An actor is created with an initial state. From there the state can only be queried or modified by passing messages using the `invoke` function, receiving a future which will contain a result once the message has been processed. The messages are processed asynchronously.
 
 See the ["counter" example](examples/counter.rs) for an suggestion of how to build actors around this library.
+
+## Minimum `rustc`
+
+Version 0.1 and higher require `rustc` 1.39 or higher.
 
 ## Overview
 
@@ -89,6 +92,6 @@ impl Counter {
 }
 ```
 
-The struct that contains the reference to the actor `Counter` is cheaply cloneable, but all refer to the same running future that processes the messages, so all indirectly refer to the same shared state.  Each thread that owns a `Counter` can call `add` or `subtract` to send messages, receiving a future that resolves to an `i64` which is the state of the counter after that message has been processed.
+The struct that contains the reference to the actor `Counter` is cheaply cloneable, but all refer to the same running future that processes the messages, so all indirectly refer to the same shared state. Each thread that owns a `Counter` can call `add` or `subtract` to send messages, receiving a future that resolves to an `i64` which is the state of the counter after that message has been processed.
 
 The running future that processes messages will complete successfully once all the `Counter`s have been dropped.

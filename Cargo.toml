@@ -9,7 +9,8 @@ repository = "https://github.com/benashford/lwactors"
 edition = "2018"
 
 [dependencies]
-futures = "0.1"
+futures-channel = "0.3"
+futures-util = "0.3"
 
 [dev-dependencies]
-futures-cpupool = "0.1"
+futures = {version = "0.3", features = ["thread-pool"]}

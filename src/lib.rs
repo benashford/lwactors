@@ -1,29 +1,25 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, future::Future};
 
-use futures::{
-    future::{self, Executor},
-    sync::{mpsc, oneshot},
-    Async, Future, Poll, Stream,
+use futures_channel::{mpsc, oneshot};
+use futures_util::{
+    future::{self, Either, FutureExt},
+    stream::StreamExt,
+    task::SpawnExt,
 };
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
-pub fn actor<EX, A, S, R, E>(executor: &EX, initial_state: S) -> ActorSender<A, R, E>
+pub fn actor<A, S, R, E>(executor: impl SpawnExt, initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<State = S, Result = R, Error = E> + Send + 'static,
     S: Send + 'static,
     R: Send + 'static,
     E: Send + 'static,
-    EX: Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + 'static,
 {
     let (tx, rx) = mpsc::unbounded();
-    let actor = Box::new(Actor {
-        receiver: rx,
-        state: initial_state,
-    });
     executor
-        .execute(actor)
+        .spawn(actor_future(rx, initial_state))
         .expect("Cannot schedule actor on executor");
     ActorSender(tx)
 }
@@ -46,47 +42,32 @@ where
     E: Send + From<ActorError> + 'static,
 {
     /// Invokes a specific action on the actor.  Returns a future that completes when the actor has
-    /// performed the action
-    pub fn invoke(&self, action: A) -> ActFuture<R, E> {
+    /// performed the action.
+    ///
+    /// Specifically not an `async` function to allow it to be used correctly in a fire-and-forget
+    /// manner, although this is not advised.
+    pub fn invoke(&self, action: A) -> impl Future<Output = ActResult<R, E>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.0.unbounded_send((action, tx)) {
-            return Box::new(future::err(ActorError::from(e).into()));
+            Either::Right(future::err(ActorError::from(e).into()))
+        } else {
+            Either::Left(rx.then(|result| match result {
+                Ok(Ok(r)) => future::ok(r),
+                Ok(Err(e)) => future::err(e),
+                Err(e) => future::err(ActorError::from(e).into()),
+            }))
         }
-        let recv_f = rx.then(|r| {
-            future::result(match r {
-                Ok(Ok(r)) => Ok(r),
-                Ok(Err(e)) => Err(e),
-                Err(e) => Err(ActorError::from(e).into()),
-            })
-        });
-        Box::new(recv_f)
     }
 }
 
-struct Actor<A, S, R, E> {
-    receiver: mpsc::UnboundedReceiver<(A, oneshot::Sender<Result<R, E>>)>,
-    state: S,
-}
-
-impl<A, S, R, E> Future for Actor<A, S, R, E>
-where
+async fn actor_future<A, S, R, E>(
+    mut receiver: mpsc::UnboundedReceiver<(A, oneshot::Sender<Result<R, E>>)>,
+    mut state: S,
+) where
     A: Action<State = S, Result = R, Error = E>,
 {
-    type Item = ();
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        loop {
-            match self.receiver.poll() {
-                Ok(Async::Ready(Some((a, tx)))) => {
-                    // Not checking the result, as nothing may be waiting
-                    let _ = tx.send(a.act(&mut self.state));
-                }
-                Ok(Async::Ready(None)) => return Ok(Async::Ready(())),
-                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(()) => return Err(()),
-            }
-        }
+    while let Some((a, tx)) = receiver.next().await {
+        let _ = tx.send(a.act(&mut state));
     }
 }
 
@@ -98,7 +79,7 @@ pub trait Action {
     fn act(self, s: &mut Self::State) -> Result<Self::Result, Self::Error>;
 }
 
-pub type ActFuture<R, E> = Box<dyn Future<Item = R, Error = E> + Send>;
+pub type ActResult<R, E> = Result<R, E>;
 
 #[derive(Debug)]
 pub enum ActorError {
@@ -123,8 +104,8 @@ impl fmt::Display for ActorError {
     }
 }
 
-impl<T> From<mpsc::SendError<T>> for ActorError {
-    fn from(_from: mpsc::SendError<T>) -> Self {
+impl<T> From<mpsc::TrySendError<T>> for ActorError {
+    fn from(_from: mpsc::TrySendError<T>) -> Self {
         ActorError::InvokeError
     }
 }
