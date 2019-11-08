@@ -1,7 +1,11 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, future::Future};
 
 use futures_channel::{mpsc, oneshot};
-use futures_util::{stream::StreamExt, task::SpawnExt};
+use futures_util::{
+    future::{self, Either, FutureExt},
+    stream::StreamExt,
+    task::SpawnExt,
+};
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
@@ -38,16 +42,20 @@ where
     E: Send + From<ActorError> + 'static,
 {
     /// Invokes a specific action on the actor.  Returns a future that completes when the actor has
-    /// performed the action
-    pub async fn invoke(&self, action: A) -> ActResult<R, E> {
+    /// performed the action.
+    ///
+    /// Specifically not an `async` function to allow it to be used correctly in a fire-and-forget
+    /// manner, although this is not advised.
+    pub fn invoke(&self, action: A) -> impl Future<Output = ActResult<R, E>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.0.unbounded_send((action, tx)) {
-            return Err(ActorError::from(e).into());
-        }
-        match rx.await {
-            Ok(Ok(r)) => Ok(r),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(ActorError::from(e).into()),
+            Either::Right(future::err(ActorError::from(e).into()))
+        } else {
+            Either::Left(rx.then(|result| match result {
+                Ok(Ok(r)) => future::ok(r),
+                Ok(Err(e)) => future::err(e),
+                Err(e) => future::err(ActorError::from(e).into()),
+            }))
         }
     }
 }
