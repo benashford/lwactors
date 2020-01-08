@@ -24,6 +24,19 @@ where
     ActorSender(tx)
 }
 
+#[cfg(feature = "tokio")]
+pub fn tokio_actor<A, S, R, E>(initial_state: S) -> ActorSender<A, R, E>
+where
+    A: Action<State = S, Result = R, Error = E> + Send + 'static,
+    S: Send + 'static,
+    R: Send + 'static,
+    E: Send + 'static,
+{
+    let (tx, rx) = mpsc::unbounded();
+    tokio::spawn(actor_future(rx, initial_state));
+    ActorSender(tx)
+}
+
 type ActorSenderInner<A, R, E> = mpsc::UnboundedSender<(A, oneshot::Sender<Result<R, E>>)>;
 
 #[derive(Debug)]
