@@ -1,15 +1,46 @@
+#[cfg(feature = "async-global-executor14")]
+extern crate async_global_executor14 as async_global_executor;
+
+use std::future::Future;
 use std::thread;
 
-use futures::{
-    executor::{block_on, ThreadPool},
-    future,
-};
+#[cfg(not(feature = "__global_executor"))]
+use futures::executor::{self, ThreadPool};
+use futures::future;
 
-use lwactors::{actor, Action, ActorError, ActorSender};
+use lwactors::{Action, ActorError, ActorSender};
 
+#[cfg(not(feature = "__global_executor"))]
+fn block_on<F>(f: F) -> F::Output
+where
+    F: Future,
+{
+    executor::block_on(f)
+}
+
+#[cfg(feature = "__global_executor")]
+fn block_on<F>(f: F) -> F::Output
+where
+    F: Future,
+{
+    async_global_executor::block_on(f)
+}
+
+#[cfg(not(feature = "__global_executor"))]
 fn main() {
     let cpu_pool = ThreadPool::new().expect("Can't create ThreadPool");
     let counter = Counter::new(cpu_pool.clone());
+    do_counter(counter);
+    println!("Finished: {:?}", cpu_pool);
+}
+
+#[cfg(feature = "async-global-executor14")]
+fn main() {
+    let counter = Counter::new();
+    do_counter(counter);
+}
+
+fn do_counter(counter: Counter) {
     let counter1 = counter.clone();
 
     let a = thread::spawn(move || {
@@ -18,18 +49,14 @@ fn main() {
         println!("ADD RESULTS: {:?}", results);
     });
 
-    let counter2 = counter.clone();
-
     let b = thread::spawn(move || {
-        let futs: Vec<_> = (0..100).map(|i| counter2.subtract(i)).collect();
+        let futs: Vec<_> = (0..100).map(|i| counter.subtract(i)).collect();
         let results = block_on(future::join_all(futs));
         println!("SUB RESULTS: {:?}", results);
     });
 
     a.join().expect("Thread one failed");
     b.join().expect("Thread two failed");
-
-    println!("Finished: {:?}", cpu_pool);
 }
 
 #[derive(Clone)]
@@ -40,9 +67,17 @@ struct Counter {
 type CounterResult = Result<i64, CounterError>;
 
 impl Counter {
+    #[cfg(not(feature = "__global_executor"))]
     fn new(thread_pool: ThreadPool) -> Counter {
         Counter {
-            queue: actor(thread_pool, 0),
+            queue: lwactors::actor_with_executor(thread_pool, 0),
+        }
+    }
+
+    #[cfg(feature = "__global_executor")]
+    fn new() -> Counter {
+        Counter {
+            queue: lwactors::actor(0),
         }
     }
 

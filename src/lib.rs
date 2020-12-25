@@ -1,4 +1,11 @@
-use std::{error::Error, fmt, future::Future};
+#[cfg(feature = "async-global-executor14")]
+extern crate async_global_executor14 as async_global_executor;
+#[cfg(feature = "tokio02")]
+extern crate tokio02 as tokio;
+#[cfg(feature = "tokio10")]
+extern crate tokio10 as tokio;
+
+use std::future::Future;
 
 use futures_channel::{mpsc, oneshot};
 use futures_util::{
@@ -7,10 +14,15 @@ use futures_util::{
     task::SpawnExt,
 };
 
+use thiserror::Error;
+
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
-pub fn actor<A, S, R, E>(executor: impl SpawnExt, initial_state: S) -> ActorSender<A, R, E>
+pub fn actor_with_executor<A, S, R, E>(
+    executor: impl SpawnExt,
+    initial_state: S,
+) -> ActorSender<A, R, E>
 where
     A: Action<State = S, Result = R, Error = E> + Send + 'static,
     S: Send + 'static,
@@ -24,8 +36,8 @@ where
     ActorSender(tx)
 }
 
-#[cfg(feature = "tokio")]
-pub fn tokio_actor<A, S, R, E>(initial_state: S) -> ActorSender<A, R, E>
+#[cfg(feature = "__global_executor")]
+pub fn actor<A, S, R, E>(initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<State = S, Result = R, Error = E> + Send + 'static,
     S: Send + 'static,
@@ -33,7 +45,13 @@ where
     E: Send + 'static,
 {
     let (tx, rx) = mpsc::unbounded();
+
+    #[cfg(feature = "async-global-executor14")]
+    async_global_executor::spawn(actor_future(rx, initial_state)).detach();
+
+    #[cfg(feature = "__tokio")]
     tokio::spawn(actor_future(rx, initial_state));
+
     ActorSender(tx)
 }
 
@@ -94,27 +112,14 @@ pub trait Action {
 
 pub type ActResult<R, E> = Result<R, E>;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ActorError {
     /// Cannot send message to the actor
+    #[error("Cannot send message to actor")]
     InvokeError,
     /// Response was cancelled before being received.
+    #[error("Cannot wait for an answer")]
     WaitError,
-}
-
-impl Error for ActorError {
-    fn description(&self) -> &str {
-        match self {
-            ActorError::InvokeError => "Cannot send message to actor",
-            ActorError::WaitError => "Cannot wait for an answer",
-        }
-    }
-}
-
-impl fmt::Display for ActorError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self.description())
-    }
 }
 
 impl<T> From<mpsc::TrySendError<T>> for ActorError {

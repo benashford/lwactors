@@ -1,6 +1,6 @@
 [package]
 name = "lwactors"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Ben Ashford <benashford@users.noreply.github.com>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -9,9 +9,20 @@ repository = "https://github.com/benashford/lwactors"
 edition = "2018"
 
 [dependencies]
+async-global-executor14 = { package = "async-global-executor", version = "1.4", optional = true }
 futures-channel = "0.3"
 futures-util = "0.3"
-tokio = { version = "0.2", optional = true, features = ["rt-core"] }
+thiserror = "1.0"
+tokio02 = { package = "tokio", version = "0.2", optional = true, features = ["rt-core"] }
+tokio10 = { package = "tokio", version = "1.0", optional = true, features = ["rt"] }
 
 [dev-dependencies]
-futures = {version = "0.3", features = ["thread-pool"]}
+futures = { version = "0.3", features = ["thread-pool"] }
+
+[features]
+__global_executor = []
+__tokio = []
+
+with_tokio02 = ["tokio02", "__tokio", "__global_executor"]
+with_tokio10 = ["tokio10", "__tokio", "__global_executor"]
+with_async_global_executor14 = ["async-global-executor14", "__global_executor"]
