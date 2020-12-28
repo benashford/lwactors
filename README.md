@@ -18,10 +18,6 @@ An actor is created with an initial state. From there the state can only be quer
 
 See the ["counter" example](examples/counter.rs) for an suggestion of how to build actors around this library.
 
-## Minimum `rustc`
-
-Version 0.1 and higher require `rustc` 1.39 or higher.
-
 ## Overview
 
 ### The actor itself

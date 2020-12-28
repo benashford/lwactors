@@ -36,6 +36,9 @@ where
     ActorSender(tx)
 }
 
+/// Constructs a new actor using a global executor. If the feature flag to enable Tokio is chosen,
+/// this will use `tokio::spawn` if the feature flag for the async-global-executor crate is chosen,
+/// that will be used.
 #[cfg(feature = "__global_executor")]
 pub fn actor<A, S, R, E>(initial_state: S) -> ActorSender<A, R, E>
 where
