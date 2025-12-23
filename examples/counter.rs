@@ -1,41 +1,25 @@
-#[cfg(feature = "async-global-executor14")]
-extern crate async_global_executor14 as async_global_executor;
-
-use std::future::Future;
 use std::thread;
 
-#[cfg(not(feature = "__global_executor"))]
-use futures::executor::{self, ThreadPool};
 use futures::future;
+use tokio::runtime::Builder;
 
 use lwactors::{Action, ActorError, ActorSender};
 
-#[cfg(not(feature = "__global_executor"))]
 fn block_on<F>(f: F) -> F::Output
 where
     F: Future,
 {
-    executor::block_on(f)
+    let rt = Builder::new_current_thread()
+        .build()
+        .expect("Failed to build tokio runtime");
+    rt.block_on(f)
 }
 
-#[cfg(feature = "__global_executor")]
-fn block_on<F>(f: F) -> F::Output
-where
-    F: Future,
-{
-    async_global_executor::block_on(f)
-}
-
-#[cfg(not(feature = "__global_executor"))]
 fn main() {
-    let cpu_pool = ThreadPool::new().expect("Can't create ThreadPool");
-    let counter = Counter::new(cpu_pool.clone());
-    do_counter(counter);
-    println!("Finished: {:?}", cpu_pool);
-}
-
-#[cfg(feature = "async-global-executor14")]
-fn main() {
+    let rt = Builder::new_multi_thread()
+        .build()
+        .expect("Failed to build tokio runtime");
+    let _guard = rt.enter();
     let counter = Counter::new();
     do_counter(counter);
 }
@@ -67,14 +51,6 @@ struct Counter {
 type CounterResult = Result<i64, CounterError>;
 
 impl Counter {
-    #[cfg(not(feature = "__global_executor"))]
-    fn new(thread_pool: ThreadPool) -> Counter {
-        Counter {
-            queue: lwactors::actor_with_executor(thread_pool, 0),
-        }
-    }
-
-    #[cfg(feature = "__global_executor")]
     fn new() -> Counter {
         Counter {
             queue: lwactors::actor(0),

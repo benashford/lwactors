@@ -1,26 +1,24 @@
-#[cfg(feature = "async-global-executor14")]
-extern crate async_global_executor14 as async_global_executor;
-#[cfg(feature = "tokio02")]
-extern crate tokio02 as tokio;
-#[cfg(feature = "tokio10")]
-extern crate tokio10 as tokio;
-
-use std::future::Future;
+mod actor_spawner;
 
 use futures_channel::{mpsc, oneshot};
 use futures_util::{
     future::{self, Either, FutureExt},
     stream::StreamExt,
-    task::SpawnExt,
 };
-
 use thiserror::Error;
+use tokio::spawn;
+
+pub use self::actor_spawner::ActorSpawner;
 
 /// Construct a new actor, requires an `Executor` and an initial state.  Returns a reference that can be cheaply
 /// cloned and passed between threads.  A specific implementation is expected to wrap this return value and implement
 /// the required custom logic.
+///
+/// # Panics
+///
+/// Panics if the actor cannot be spawned on the provided executor.
 pub fn actor_with_executor<A, S, R, E>(
-    executor: impl SpawnExt,
+    executor: &impl ActorSpawner,
     initial_state: S,
 ) -> ActorSender<A, R, E>
 where
@@ -30,16 +28,17 @@ where
     E: Send + 'static,
 {
     let (tx, rx) = mpsc::unbounded();
-    executor
-        .spawn(actor_future(rx, initial_state))
-        .expect("Cannot schedule actor on executor");
+    executor.spawn_actor(actor_future(rx, initial_state));
     ActorSender(tx)
 }
 
-/// Constructs a new actor using a global executor. If the feature flag to enable Tokio is chosen,
-/// this will use `tokio::spawn` if the feature flag for the async-global-executor crate is chosen,
-/// that will be used.
-#[cfg(feature = "__global_executor")]
+/// Constructs a new actor using a global executor. This will use `spawn`.
+///
+/// # Panics
+///
+/// This will panic if not running within a Tokio runtime, that must
+/// exist beforehand. Or see [`actor_with_executor`] for a non-global
+/// executor.
 pub fn actor<A, S, R, E>(initial_state: S) -> ActorSender<A, R, E>
 where
     A: Action<State = S, Result = R, Error = E> + Send + 'static,
@@ -49,11 +48,7 @@ where
 {
     let (tx, rx) = mpsc::unbounded();
 
-    #[cfg(feature = "async-global-executor14")]
-    async_global_executor::spawn(actor_future(rx, initial_state)).detach();
-
-    #[cfg(feature = "__tokio")]
-    tokio::spawn(actor_future(rx, initial_state));
+    spawn(actor_future(rx, initial_state));
 
     ActorSender(tx)
 }
@@ -110,6 +105,11 @@ pub trait Action {
     type Result;
     type Error;
 
+    /// Perform the action on the given state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the action fails.
     fn act(self, s: &mut Self::State) -> Result<Self::Result, Self::Error>;
 }
 
@@ -134,5 +134,46 @@ impl<T> From<mpsc::TrySendError<T>> for ActorError {
 impl From<oneshot::Canceled> for ActorError {
     fn from(_from: oneshot::Canceled) -> Self {
         ActorError::WaitError
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Builder;
+
+    struct TestAction(i32);
+    impl Action for TestAction {
+        type State = i32;
+        type Result = i32;
+        type Error = ActorError;
+
+        fn act(self, state: &mut Self::State) -> Result<Self::Result, Self::Error> {
+            *state += self.0;
+            Ok(*state)
+        }
+    }
+
+    #[test]
+    fn test_actor_with_executor() {
+        let rt = Builder::new_current_thread()
+            .build()
+            .expect("Failed to build tokio runtime");
+        let handle = rt.handle().clone();
+
+        let actor = actor_with_executor::<TestAction, _, _, _>(&handle, 0);
+
+        rt.block_on(async move {
+            let res = actor
+                .invoke(TestAction(10))
+                .await
+                .expect("Invocation failed");
+            assert_eq!(res, 10);
+            let res = actor
+                .invoke(TestAction(5))
+                .await
+                .expect("Invocation failed");
+            assert_eq!(res, 15);
+        });
     }
 }
