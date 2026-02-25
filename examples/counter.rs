@@ -1,46 +1,30 @@
-use std::thread;
-
 use futures::future;
-use tokio::runtime::Builder;
 
 use lwactors::{Action, ActorError, ActorSender};
 
-fn block_on<F>(f: F) -> F::Output
-where
-    F: Future,
-{
-    let rt = Builder::new_current_thread()
-        .build()
-        .expect("Failed to build tokio runtime");
-    rt.block_on(f)
-}
-
-fn main() {
-    let rt = Builder::new_multi_thread()
-        .build()
-        .expect("Failed to build tokio runtime");
-    let _guard = rt.enter();
+#[tokio::main]
+async fn main() {
     let counter = Counter::new();
-    do_counter(counter);
+    do_counter(counter).await;
 }
 
-fn do_counter(counter: Counter) {
+async fn do_counter(counter: Counter) {
     let counter1 = counter.clone();
 
-    let a = thread::spawn(move || {
+    let a = tokio::spawn(async move {
         let futs: Vec<_> = (0..100).map(|i| counter1.add(i)).collect();
-        let results = block_on(future::join_all(futs));
+        let results = future::join_all(futs).await;
         println!("ADD RESULTS: {:?}", results);
     });
 
-    let b = thread::spawn(move || {
+    let b = tokio::spawn(async move {
         let futs: Vec<_> = (0..100).map(|i| counter.subtract(i)).collect();
-        let results = block_on(future::join_all(futs));
+        let results = future::join_all(futs).await;
         println!("SUB RESULTS: {:?}", results);
     });
 
-    a.join().expect("Thread one failed");
-    b.join().expect("Thread two failed");
+    a.await.expect("Task one failed");
+    b.await.expect("Task two failed");
 }
 
 #[derive(Clone)]
@@ -87,11 +71,14 @@ impl Action for CounterAction {
     }
 }
 
-#[derive(Debug)]
-struct CounterError;
+#[derive(Debug, thiserror::Error)]
+pub enum CounterError {
+    #[error("Counter error: {0}")]
+    General(String),
+}
 
 impl From<ActorError> for CounterError {
-    fn from(_: ActorError) -> Self {
-        CounterError
+    fn from(e: ActorError) -> Self {
+        CounterError::General(e.to_string())
     }
 }
