@@ -1,62 +1,30 @@
-#[cfg(feature = "async-global-executor14")]
-extern crate async_global_executor14 as async_global_executor;
-
-use std::future::Future;
-use std::thread;
-
-#[cfg(not(feature = "__global_executor"))]
-use futures::executor::{self, ThreadPool};
 use futures::future;
 
 use lwactors::{Action, ActorError, ActorSender};
 
-#[cfg(not(feature = "__global_executor"))]
-fn block_on<F>(f: F) -> F::Output
-where
-    F: Future,
-{
-    executor::block_on(f)
-}
-
-#[cfg(feature = "__global_executor")]
-fn block_on<F>(f: F) -> F::Output
-where
-    F: Future,
-{
-    async_global_executor::block_on(f)
-}
-
-#[cfg(not(feature = "__global_executor"))]
-fn main() {
-    let cpu_pool = ThreadPool::new().expect("Can't create ThreadPool");
-    let counter = Counter::new(cpu_pool.clone());
-    do_counter(counter);
-    println!("Finished: {:?}", cpu_pool);
-}
-
-#[cfg(feature = "async-global-executor14")]
-fn main() {
+#[tokio::main]
+async fn main() {
     let counter = Counter::new();
-    do_counter(counter);
+    do_counter(counter).await;
 }
 
-fn do_counter(counter: Counter) {
+async fn do_counter(counter: Counter) {
     let counter1 = counter.clone();
 
-    let a = thread::spawn(move || {
+    let a = tokio::spawn(async move {
         let futs: Vec<_> = (0..100).map(|i| counter1.add(i)).collect();
-        let results = block_on(future::join_all(futs));
+        let results = future::join_all(futs).await;
         println!("ADD RESULTS: {:?}", results);
     });
 
-    let b = thread::spawn(move || {
+    let b = tokio::spawn(async move {
         let futs: Vec<_> = (0..100).map(|i| counter.subtract(i)).collect();
-        let results = block_on(future::join_all(futs));
+        let results = future::join_all(futs).await;
         println!("SUB RESULTS: {:?}", results);
     });
 
-    a.join().expect("Thread one failed");
-    b.join().expect("Thread two failed");
+    a.await.expect("Task one failed");
+    b.await.expect("Task two failed");
 }
 
 #[derive(Clone)]
@@ -67,14 +35,6 @@ struct Counter {
 type CounterResult = Result<i64, CounterError>;
 
 impl Counter {
-    #[cfg(not(feature = "__global_executor"))]
-    fn new(thread_pool: ThreadPool) -> Counter {
-        Counter {
-            queue: lwactors::actor_with_executor(thread_pool, 0),
-        }
-    }
-
-    #[cfg(feature = "__global_executor")]
     fn new() -> Counter {
         Counter {
             queue: lwactors::actor(0),
@@ -111,11 +71,14 @@ impl Action for CounterAction {
     }
 }
 
-#[derive(Debug)]
-struct CounterError;
+#[derive(Debug, thiserror::Error)]
+pub enum CounterError {
+    #[error("Counter error: {0}")]
+    General(String),
+}
 
 impl From<ActorError> for CounterError {
-    fn from(_: ActorError) -> Self {
-        CounterError
+    fn from(e: ActorError) -> Self {
+        CounterError::General(e.to_string())
     }
 }
