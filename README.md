@@ -16,7 +16,7 @@ This library allows standalone "actors" to exist in Applications using Futures.
 
 An actor is created with an initial state. From there the state can only be queried or modified by passing messages using the `invoke` function, receiving a future which will contain a result once the message has been processed. The messages are processed asynchronously.
 
-See the ["counter" example](examples/counter.rs) for an suggestion of how to build actors around this library.
+See the ["counter" example](examples/counter.rs) or the ["ping_pong" example](examples/ping_pong.rs) for suggestions of how to build actors around this library.
 
 ## Overview
 
